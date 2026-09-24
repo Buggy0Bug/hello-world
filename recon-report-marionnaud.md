@@ -29,23 +29,31 @@
 
 ## 1. VULNERABILITY SUMMARY
 
-| # | Severity | Domain | Finding | Reportable |
-|---|----------|--------|---------|------------|
-| 1 | **CRITICAL** | bdese.marionnaud.fr | Hardcoded AES-256-CBC encryption key+IV in client-side JavaScript | YES |
-| 2 | **CRITICAL** | api.marionnaud.fr | Adyen LIVE payment keys + 10+ API keys exposed via /configurations/group (Wayback cache) | YES |
-| 3 | **HIGH** | bdes-api.marionnaud.fr | Production API running in development mode with full stack traces | YES |
-| 4 | **HIGH** | bdes-api.marionnaud.fr | Email enumeration via /login endpoint — no rate limiting, no CAPTCHA | YES |
-| 5 | **HIGH** | extranet.marionnaud.ch | Django superadmin login exposed to internet with password reset + filebrowser | YES |
-| 6 | **MEDIUM** | api/media.marionnaud.* (all 16) | CORS wildcard subdomain reflection with credentials on all api/media subdomains | YES |
-| 7 | **MEDIUM** | marionnaud.fr | Missing DMARC on primary French domain (all other 7 TLDs have p=reject) | YES |
-| 8 | **MEDIUM** | api.marionnaud.* (all 8) | Akamai WAF bypass via URL-encoding (/api/v2/ → /%61pi/v2/) | YES |
-| 9 | **MEDIUM** | ecom-data.marionnaud.fr | Active GCP service responding HTTP 400 — requires specific parameters | MAYBE |
-| 10 | **LOW-MED** | all marionnaud.* | No CAA records on any domain — any CA can issue certificates | YES |
-| 11 | **LOW-MED** | marionnaud.it | Wildcard SPF softfail — any subdomain authorizes Emarsys+Outlook | YES |
-| 12 | **LOW** | extranet.marionnaud.ch | Session cookies missing Secure and SameSite flags | YES |
-| 13 | **LOW** | all www/api/app.* | Missing HSTS, X-Frame-Options, X-Content-Type-Options across all domains | YES |
-| 14 | **INFO** | fs.marionnaud.fr | ADFS server confirmed (HTTP redirect to /adfs/ls/) | NO |
-| 15 | **INFO** | api.marionnaud.* | SAP Commerce authorization server endpoints confirmed behind WAF | NO |
+### Triaged Findings (Ready to Submit)
+
+| # | Severity | Domain | Finding | Reportable | Confidence |
+|---|----------|--------|---------|------------|------------|
+| C1 | **CRITICAL** | bdese.marionnaud.fr | Source maps publicly accessible — full React app source code exposed (48 original TypeScript files) | **YES** | 95% |
+| C2 | **CRITICAL** | bdese.marionnaud.fr | Hardcoded AES-256-CBC encryption key+IV for decrypting employee PII including passwords | **YES** | 90% |
+| C3 | **CRITICAL** | bdes-api.marionnaud.fr | Passwords stored with reversible encryption (not hashing) — decryptable with exposed key | **YES** | 90% |
+| H1 | **HIGH** | bdes-api.marionnaud.fr | Production API running in development mode — verbose stack traces on all errors | **YES** | 85% |
+| H2 | **HIGH** | bdes-api.marionnaud.fr | 12-character maximum password length enforced server-side | **YES** | 90% |
+| M1 | **MEDIUM** | bdes-api.marionnaud.fr | Email enumeration via /login and /resetToken — no rate limiting, no CAPTCHA | **YES** | 80% |
+| M2 | **MEDIUM** | marionnaud.fr | Missing DMARC on primary French domain (all other 7 TLDs have p=reject) | **YES** | 75% |
+| M3 | **MEDIUM** | api/media.marionnaud.* (16 domains) | CORS wildcard subdomain reflection with credentials | **YES** | 60% |
+
+### Findings NOT Submitted (Triager Would Reject)
+
+| # | Domain | Finding | Rejection Reason |
+|---|--------|---------|-----------------|
+| R1 | api.marionnaud.fr | Adyen LIVE keys via Wayback cache | Client keys are public by design; endpoint remediated (WAF-blocked) |
+| R2 | extranet.marionnaud.ch | Django superadmin login exposed | Login page visible ≠ vulnerability; no auth bypass demonstrated |
+| R3 | api.marionnaud.* | Akamai WAF bypass via URL-encoding | Zero impact — backend returns 404 for encoded paths |
+| R4 | ecom-data.marionnaud.fr | GCP service HTTP 400 | Not a vulnerability — API requires parameters |
+| R5 | all marionnaud.* | No CAA records | Best practice, universally excluded from bounty |
+| R6 | all www/api/app.* | Missing security headers | Best practice, universally excluded |
+| R7 | fs.marionnaud.fr | ADFS server confirmed | Reconnaissance data, not a vulnerability |
+| R8 | api.marionnaud.* | SAP authz server confirmed behind WAF | Reconnaissance data, not a vulnerability |
 
 ---
 
@@ -127,72 +135,101 @@
 
 ## 4. CRITICAL FINDINGS
 
-### FINDING C1: Hardcoded AES-256-CBC Encryption Secrets in Client-Side JavaScript
+### FINDING C1: Source Maps Publicly Accessible — Full Application Source Code Exposed
 
 - **Severity:** CRITICAL
 - **Domain:** bdese.marionnaud.fr (193.240.185.11)
 - **Status:** LIVE — reproducible now
 
 **Description:**
-The BDES employee data platform frontend (React SPA) contains hardcoded encryption credentials in the compiled JavaScript bundle at `/static/js/2.320443c9.chunk.js`:
+All JavaScript source maps for the BDES employee data platform are publicly accessible, exposing the complete original TypeScript/React source code (48 files):
 
 ```
-REACT_APP_API_BASE_URL: "https://bdes-api.marionnaud.fr"
-REACT_APP_ENCRYPTION_SECRET_KEY: "[REDACTED - 20-char key found in JS bundle]"
-REACT_APP_ENCRYPTION_SECRET_IV: "[REDACTED - 20-char IV found in JS bundle]"
-REACT_APP_ENCRYPTION_METHOD: "aes-256-cbc"
+GET https://bdese.marionnaud.fr/static/js/main.ff712824.chunk.js.map → HTTP 200 (215KB)
+GET https://bdese.marionnaud.fr/static/js/2.320443c9.chunk.js.map → HTTP 200 (2.5MB+)
+GET https://bdese.marionnaud.fr/static/js/runtime-main.c02469a1.js.map → HTTP 200
+GET https://bdese.marionnaud.fr/asset-manifest.json → HTTP 200 (lists all files)
 ```
+
+**Exposed source files include:**
+- `utils/encryption.ts` — full encryption implementation with key derivation
+- `store/api/_client.ts` — API client with hardcoded credentials
+- `store/api/auth.ts` — authentication endpoints (login, logout, reset)
+- `store/api/users.ts` — user CRUD operations (list, details, create, update, delete)
+- `store/api/documents.ts` — document CRUD with file upload
+- `store/api/apiTypes.ts` — complete data model (User, Document, Section, Roles enum)
+- `pages/login/Login.tsx` — login form with password reset flow
+- `pages/resetPassword/ResetPassword.tsx` — password reset consuming URL token
+- `pages/users/UserDrawer.tsx` — user management form with password policy
+- `components/ProtectedRoute.tsx` — authorization logic
+- `routes.ts` — complete routing map
+- `configureStore.ts`, `App.tsx` — application configuration
 
 **Impact:**
-- Anyone can decrypt data encrypted with these credentials
-- BDES (Base de Données Économiques, Sociales et Environnementales) is a French legally-mandated employee database containing sensitive HR data: headcount, wages, working conditions, gender equality metrics
-- The key is only 20 characters (not the required 32 bytes for AES-256), suggesting implementation weakness
-- The IV is static (should be random per encryption), completely breaking CBC mode security
-
-**Additional Context:**
-- Server: nginx/1.25.4
-- manifest.json reveals: `"short_name": "Back office"`, `"name": "Back office boilerplate"`
-- All routes serve SPA index.html (client-side routing)
+- Complete application architecture disclosed to attackers
+- Enables targeted attacks against known API endpoints and authorization logic
+- Reveals encryption implementation, hardcoded secrets, and password policy (see C2, C3)
 
 ---
 
-### FINDING C2: Adyen LIVE Payment Keys + API Keys Exposed via /configurations/group
+### FINDING C2: Hardcoded AES-256-CBC Encryption Secrets + Reversible Password Encryption
 
 - **Severity:** CRITICAL
-- **Domain:** api.marionnaud.fr
-- **Status:** Confirmed via Wayback Machine cache (June 2024). Currently WAF-blocked but endpoint likely still exists.
+- **Domain:** bdese.marionnaud.fr + bdes-api.marionnaud.fr
+- **Status:** LIVE — reproducible now
 
 **Description:**
-The OCC API endpoint `GET /api/v2/mfr/configurations/group?lang=fr_FR&curr=EUR` previously returned HTTP 200 with extensive configuration data including LIVE payment credentials and third-party API keys.
+Source code recovered from source maps reveals that employee PII (including passwords) is encrypted with AES-256-CBC using a **static key and IV hardcoded in client-side JavaScript**. The encryption is **reversible** — passwords are NOT hashed.
 
-**Exposed Payment Gateway Credentials (Adyen - LIVE):**
-```
-adyen.client.key: [REDACTED - live_* key found]
-adyen.environment: LIVE
-adyen.client.side.encryption.key: [REDACTED - RSA public key found]
-worldpay.apple.merchantIdentifier: [REDACTED - merchant ID found]
+From `utils/encryption.ts` (recovered via source map):
+```typescript
+class Encryption {
+  constructor(config) {
+    // Key derivation: SHA-512 of static secret, truncated to 32 hex chars
+    this.KEY = crypto.createHash('sha512').update(config.secretKey).digest('hex').substring(0, 32);
+    this.ENCRYPTION_IV = crypto.createHash('sha512').update(config.secretIv).digest('hex').substring(0, 16);
+  }
+
+  public decryptUser(user: User) {
+    return {
+      email: this.decryptData(user.email),
+      firstName: this.decryptData(user.firstName),
+      lastName: this.decryptData(user.lastName),
+      password: this.decryptData(user.password),        // PASSWORDS!
+      phone: this.decryptData(user.phone),
+      position: this.decryptData(user.position),
+      role: this.decryptData(user.role),
+      oldPasswords: user.oldPasswords?.map(p => this.decryptData(p)),  // OLD PASSWORDS TOO
+    };
+  }
+}
 ```
 
-**Exposed Third-Party API Keys:**
+Hardcoded configuration from compiled bundle and `store/actions/auth.ts`:
 ```
-googleApiKey: [REDACTED - Google API key found]
-powerreviews.apikey.mfr: [REDACTED - UUID API key found]
-criteo.partner.id: [REDACTED]
-gtm.container.id: [REDACTED - GTM container ID found]
-onetrust.script.id: [REDACTED - UUID found]
+REACT_APP_ENCRYPTION_SECRET_KEY: "[REDACTED - 20-char static key]"
+REACT_APP_ENCRYPTION_SECRET_IV:  "[REDACTED - 20-char static IV]"
+REACT_APP_ENCRYPTION_METHOD:     "aes-256-cbc"
 ```
 
-**Exposed Internal Configuration:**
-```
-loyalty.cheque.points.threshold: [REDACTED]
-loyalty.cheque.value: [REDACTED]
-loyalty.vouchers.pattern: [REDACTED - regex pattern found]
-loyalty.invalid.card.statuses: [REDACTED - status list found]
+Hardcoded API key from `store/api/_client.ts`:
+```typescript
+headers: { 'x-bdes-api-key': '[REDACTED - API key]' }
 ```
 
 **Impact:**
-- Adyen client keys are designed for client-side use, but the volume of internal configuration (loyalty rules, feature flags, payment methods, Apple Pay merchant IDs) provides significant reconnaissance value
-- This endpoint should be tested on all country sites for differential exposure
+- **Passwords stored reversibly encrypted, not hashed** — any database leak = immediate cleartext passwords
+- **Static key/IV** — all users' data encrypted with the SAME key (no per-user salt or nonce)
+- **Decryption key publicly accessible** in client-side JavaScript
+- **Old password history** also stored and decryptable
+- **12-character maximum password length** enforced server-side (confirmed: "Trop long, 12 caractères max.")
+- BDES is a French legally-mandated employee database — GDPR implications
+- User roles include: administrateur, gestionnaire, consultation, signup
+
+### FINDING C2-REJECTED: Adyen LIVE Payment Keys (NOT SUBMITTED)
+
+- **Previous Severity:** CRITICAL → **Revised: INFORMATIONAL (Not Submitted)**
+- **Reason:** Adyen client-side keys are **designed for browser exposure** per Adyen documentation. The /configurations/group endpoint is now WAF-blocked (remediated). This is a common false positive in bug bounty.
 
 ---
 
@@ -237,50 +274,53 @@ loyalty.invalid.card.statuses: [REDACTED - status list found]
 
 ---
 
-### FINDING H2: Email Enumeration + No Rate Limiting on BDES Login
+### FINDING H2: 12-Character Maximum Password Length
 
 - **Severity:** HIGH
 - **Domain:** bdes-api.marionnaud.fr
 - **Status:** LIVE — reproducible now
 
 **Reproduction:**
-`POST /login` with `{"email":"test@test.com","password":"test"}` returns:
+`POST /reset` with `{"token":"test","password":"1234567890123"}` returns:
 ```json
 {
-  "error": "HttpError",
-  "status": 401,
-  "message": "Adresse email inconnue"
+  "data": {
+    "validation": {
+      "password": {
+        "message": "Trop long, 12 caractères max.",
+        "field": "password"
+      }
+    }
+  }
 }
 ```
 
-- "Adresse email inconnue" = "Unknown email address" — different error for unknown email vs wrong password
-- No rate limiting observed
-- No CAPTCHA protection
-- Joi validation errors on malformed input reveal field requirements
-- Combined with employee database context (BDES), enables targeted email enumeration of corporate users
+Source code confirms differential policy by role:
+- `consultation` role: 8 characters max
+- All other roles (administrateur, gestionnaire): 12 characters max
+
+Combined with reversible encryption (not hashing) and exposed decryption key, this severely limits the password keyspace.
 
 ---
 
-### FINDING H3: Django Superadmin Exposed to Internet
+### FINDING H3 (DOWNGRADED): Email Enumeration on BDES Login and Password Reset
 
-- **Severity:** HIGH
-- **Domain:** extranet.marionnaud.ch (137.74.20.55, OVH)
+- **Previous Severity:** HIGH → **Revised: MEDIUM**
+- **Domain:** bdes-api.marionnaud.fr
 - **Status:** LIVE — reproducible now
 
-**Application:** "Marionnaud Master Data Tool" (MDT) — Django CMS
+Both `/login` and `/resetToken` endpoints differentiate between known and unknown emails:
+- Login: "Adresse email inconnue" (Unknown email address) vs different error for wrong password
+- Reset: "Utilisateur inconnu." (Unknown user) vs success
+- No rate limiting or CAPTCHA on either endpoint
 
-**Exposed login endpoints:**
-- `/de/superadmin/` — Django superadmin login
-- `/de/superadmin/login/` — Same
-- `/de/admin/` — Admin login
-- `/fr/` — French admin ("MDT admin")
-- `/de/superadmin/password_reset/` — Password reset
-- `/de/superadmin/filebrowser/` — File browser (requires auth)
-- `/de/superadmin/doc/` — Documentation (requires auth)
+---
 
-**Login form reveals:** CSRF token, username max_length=30, hidden field `this_is_the_login_form=1`
+### FINDING H4-REJECTED: Django Superadmin Exposed (NOT SUBMITTED)
 
-**Additional issues:** Old Django version indicators (IE7 CSS conditionals suggest Django 1.x era), no rate limiting on login.
+- **Previous Severity:** HIGH → **Revised: INFORMATIONAL (Not Submitted)**
+- **Domain:** extranet.marionnaud.ch
+- **Reason:** An accessible login page is not a vulnerability. No unauthorized access, auth bypass, default credentials, or exploitable CVE demonstrated. Password reset requires authentication first.
 
 ---
 
@@ -570,46 +610,92 @@ Discovered via CT logs — consistent pattern across all countries:
 
 ---
 
-## 14. RECOMMENDED NEXT STEPS
+## 14. BUG BOUNTY SUBMISSION STRATEGY
 
-### Immediate Reports (Submit to Intigriti Now)
+### Report 1: CRITICAL — BDES Employee Data Platform Chain (Submit NOW)
 
-1. **CRITICAL — BDES Encryption Secrets** (Finding C1)
-   - Hardcoded AES key/IV in client JS — immediate, verifiable, high impact
-   - Tier 5 wildcard (*.marionnaud.fr) — up to $500
+**Bundle findings:** C1 + C2 + H1 + H2 + H3 as one comprehensive report titled "BDES Employee Data Platform — Source Code Exposure + Reversible Password Encryption + Hardcoded Secrets"
 
-2. **HIGH — BDES API Dev Mode + Stack Traces** (Finding H1)
-   - Production API in development mode — immediate, verifiable
-   - Can be combined with C1 in same report
+**The chain:**
+1. Source maps expose full application source code (C1)
+2. Source code reveals encryption implementation with hardcoded key/IV (C2)
+3. Employee passwords stored with reversible encryption, not hashing (C2)
+4. 12-character max password + old password history stored (H2)
+5. API running in dev mode with full stack traces (H1)
+6. Email enumeration on login and password reset (H3)
 
-3. **HIGH — BDES Email Enumeration** (Finding H2)
-   - No rate limiting on login endpoint
-   - Can be combined with H1
+**Scope:** Tier 5 (*.marionnaud.fr, $10-$500)
+**Expected bounty:** $200-$500
+**Confidence:** 90% accepted at HIGH-CRITICAL
 
-4. **HIGH — Django Superadmin Exposed** (Finding H3)
-   - Internet-exposed admin with password reset + filebrowser
-   - Tier 5 wildcard (*.marionnaud.ch) — up to $500
+### Report 2: MEDIUM — Missing DMARC on marionnaud.fr (Submit NOW)
 
-5. **MEDIUM — CORS Wildcard with Credentials** (Finding M1)
-   - Affects all 16 api/media domains across all countries
-   - Tier 1 scope (api.marionnaud.{fr,at,ch,it}) — up to $3,500
+**Simple standalone report.** All 7 other TLDs have p=reject; .fr alone has no DMARC.
+**Scope:** Tier 1 ($100-$8,500)
+**Expected bounty:** $100-$500
+**Confidence:** 75% accepted
 
-6. **MEDIUM — Missing DMARC on .fr** (Finding M2)
-   - Tier 1 scope — up to $3,500
+### Report 3: MEDIUM — CORS Wildcard Subdomain Reflection (Submit NOW, lower priority)
 
-### Further Investigation Required
+**16 api/media domains reflect any *.marionnaud.{tld} origin with credentials.**
+**Scope:** Tier 1 ($100-$8,500)
+**Expected bounty:** $100-$500
+**Confidence:** 60% accepted (theoretical without subdomain takeover chain)
 
-7. **HTTP probe CT log discoveries** — mobadm, mobconnect, filex, securees, ntf (all on dedicated IPs, not behind Akamai WAF)
-8. **Payment gateway probing** — hipaygtw, paygtw across all TLDs (financial transaction handling)
-9. **Test /configurations/group on all countries** via browser (to get past Akamai with valid session cookies)
-10. **Test prod-cc/api-s1/www-s1 endpoints** — may have different WAF rules or debug features
-11. **BDES API deep dive** — fuzz API routes, test IDOR on `/user/{id}`, test encryption implementation
-12. **GenAI prompt injection** — test AI review summaries and product comparisons
-13. **Django CVE testing** on extranet.marionnaud.ch — old version indicators
-14. **Password reset flow** — `/api/v2/{site}/forgottenpasswordtokens`
-15. **Anonymous cart manipulation** — `/api/v2/{site}/users/anonymous/carts`
-16. **www.eshop.marionnaud.cz** (193.240.185.11) — same IP as BDES, separate e-shop on dedicated infra
-17. **SBC/telephony endpoints** — mfr-sbc-01/02 VoIP misconfigurations
+### Findings Rejected After Triage (Do NOT Submit)
+
+| Finding | Reason |
+|---------|--------|
+| Adyen client keys | Public by design per Adyen docs; endpoint remediated |
+| Django admin login | Login page ≠ vulnerability; no auth bypass |
+| WAF bypass via URL encoding | Zero impact — backend 404s on encoded paths |
+| Missing security headers | Universally excluded from bounty programs |
+| No CAA records | Best practice, not vulnerability |
+| SAP/ADFS confirmed | Reconnaissance data, not vulnerabilities |
+
+### BDES API Complete Route Map (From Source Code + Testing)
+
+**Unauthenticated endpoints:**
+- `GET /` — API info (name, version, env, instance)
+- `POST /login` — email + password auth (cookie-based sessions)
+- `POST /resetToken` — password reset token request
+- `POST /reset` — password reset (token + password)
+
+**Authenticated (isLogged middleware):**
+- `GET /me` — current user info
+- `GET /users` — user listing with pagination
+- `GET /user/:id` — user details
+- `GET /documents` — document listing
+- `GET /document/:id` — document details
+- `GET /document/:id/content` — document content
+- `DELETE /document/:id` — delete document
+- `POST /logout` — logout
+- `GET /structure` — BDES organizational structure
+- `GET /sections` — section listing
+- `GET /section/:id` — section details
+
+**Admin (isAdmin middleware):**
+- `POST /user` — create user
+- `PUT /user/:id` — update user
+- `DELETE /user/:id` — delete user
+
+**Manager (canManage middleware):**
+- `POST /document` — create document (FormData upload)
+- `PUT /document/:id` — update document
+- `POST /section` — create section
+- `PUT /section/:id` — update section
+- `DELETE /section/:id` — delete section
+
+**Static:**
+- `GET /files/` — static file serving (empty directory)
+
+### Further Investigation (Higher ROI Targets)
+
+1. **BDES account takeover via password reset**: Test if reset tokens are predictable, sequential, or enumerable
+2. **BDES IDOR**: If any auth is obtained, test horizontal access on `/user/:id` and `/document/:id`
+3. **GenAI prompt injection**: Test AI review/comparison features on main e-commerce (requires browser-based testing to bypass Akamai WAF)
+4. **SAP OCC API**: All endpoints blocked by Akamai; requires browser session cookies
+5. **CZ e-shop** (193.240.185.11): Same IP as BDES — may share infrastructure vulnerabilities
 
 ### Robots.txt Paths to Test (from browser with valid cookies)
 
