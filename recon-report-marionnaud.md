@@ -138,8 +138,8 @@ The BDES employee data platform frontend (React SPA) contains hardcoded encrypti
 
 ```
 REACT_APP_API_BASE_URL: "https://bdes-api.marionnaud.fr"
-REACT_APP_ENCRYPTION_SECRET_KEY: "vBwLT7hUiWVXDsUw8y3U"
-REACT_APP_ENCRYPTION_SECRET_IV: "u6og3KkUkMXMKnpVVucr"
+REACT_APP_ENCRYPTION_SECRET_KEY: "[REDACTED - 20-char key found in JS bundle]"
+REACT_APP_ENCRYPTION_SECRET_IV: "[REDACTED - 20-char IV found in JS bundle]"
 REACT_APP_ENCRYPTION_METHOD: "aes-256-cbc"
 ```
 
@@ -167,27 +167,27 @@ The OCC API endpoint `GET /api/v2/mfr/configurations/group?lang=fr_FR&curr=EUR` 
 
 **Exposed Payment Gateway Credentials (Adyen - LIVE):**
 ```
-adyen.client.key: live_BHBCD65YUZBJNKRTOLP5FQFLMIAOUNGT
+adyen.client.key: [REDACTED - live_* key found]
 adyen.environment: LIVE
-adyen.client.side.encryption.key: 10001|9125F31A5FD2C1AD794A159872369C47...
-worldpay.apple.merchantIdentifier: merchant.com.adyen.MarionnaudECOM
+adyen.client.side.encryption.key: [REDACTED - RSA public key found]
+worldpay.apple.merchantIdentifier: [REDACTED - merchant ID found]
 ```
 
 **Exposed Third-Party API Keys:**
 ```
-googleApiKey: AIzaSyDgpxxTRhPF6Doun6JC84Lw5PqqAJ7XE94
-powerreviews.apikey.mfr: 85801cd3-6ef0-466b-bb5d-025381a3b827
-criteo.partner.id: 16759
-gtm.container.id: GTM-TRJ6LQG
-onetrust.script.id: 1f5800f1-58b1-418c-a507-63f8639ef180
+googleApiKey: [REDACTED - Google API key found]
+powerreviews.apikey.mfr: [REDACTED - UUID API key found]
+criteo.partner.id: [REDACTED]
+gtm.container.id: [REDACTED - GTM container ID found]
+onetrust.script.id: [REDACTED - UUID found]
 ```
 
 **Exposed Internal Configuration:**
 ```
-loyalty.cheque.points.threshold: 150
-loyalty.cheque.value: 7.5
-loyalty.vouchers.pattern: ^98[(012)].*$
-loyalty.invalid.card.statuses: CANCELLED,INACTIVE,DAMAGED,LOST_STOLEN
+loyalty.cheque.points.threshold: [REDACTED]
+loyalty.cheque.value: [REDACTED]
+loyalty.vouchers.pattern: [REDACTED - regex pattern found]
+loyalty.invalid.card.statuses: [REDACTED - status list found]
 ```
 
 **Impact:**
@@ -210,8 +210,8 @@ loyalty.invalid.card.statuses: CANCELLED,INACTIVE,DAMAGED,LOST_STOLEN
   "name": "bdes-api",
   "version": "1.5.0",
   "env": "development",
-  "instance": "fdp2np02nsl22e9ipae6uemfpbn1q5eh",
-  "request": "51puz3o2nfnoohu5"
+  "instance": "[REDACTED]",
+  "request": "[REDACTED]"
 }
 ```
 
